@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VR Drum Simulator - Quest 3s</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    background: #111;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+  }
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    background: radial-gradient(circle at 50% 40%, #1a1a2e, #0a0a12);
+    z-index: 10;
+    text-align: center;
+  }
+  #overlay h1 {
+    font-size: 2.2em;
+    margin-bottom: 0.2em;
+    background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  #overlay p {
+    color: #aaa;
+    max-width: 480px;
+    line-height: 1.6;
+    font-size: 0.95em;
+  }
+  #enterVR {
+    margin-top: 24px;
+    padding: 16px 40px;
+    font-size: 1.2em;
+    border-radius: 40px;
+    border: none;
+    background: linear-gradient(90deg, #ff6b6b, #feca57);
+    color: #111;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(255,107,107,0.4);
+  }
+  #enterVR:disabled {
+    background: #444;
+    color: #888;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+  #status {
+    margin-top: 14px;
+    font-size: 0.85em;
+    color: #ff6b6b;
+    min-height: 1.2em;
+  }
+  #hud {
+    position: absolute;
+    top: 12px; left: 12px;
+    color: #fff;
+    background: rgba(0,0,0,0.4);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 5;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h1>🥁 VR DRUM SIMULATOR</h1>
+  <p>
+    Meta Quest 3s のコントローラーをドラムスティックとして使い、自由にドラムを演奏できるVR体験です。<br><br>
+    ヘッドセットを装着し、下のボタンからVRモードに入ってください。コントローラーを振ってドラムやシンバルを叩きましょう。
+  </p>
+  <button id="enterVR" disabled>WebXRを確認中...</button>
+  <div id="status"></div>
+</div>
+
+<div id="hud">🥁 Hit Count: <span id="hitCount">0</span></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+// ------------------------------------------------------------
+// Basic setup
+// ------------------------------------------------------------
+let scene, camera, renderer;
+let controller0, controller1, controllerGrip0, controllerGrip1;
+let hitCount = 0;
+const hitCountEl = document.getElementById('hitCount');
+const hud = document.getElementById('hud');
+const statusEl = document.getElementById('status');
+const enterBtn = document.getElementById('enterVR');
+const overlay = document.getElementById('overlay');
+
+const clock = new THREE.Clock();
+
+// Drum pad definitions: name, position, radius, color, note frequency (for synth), height
+const drumDefs = [
+  { name: 'snare',   pos: [0, 0.85, -0.45], radius: 0.18, color: 0xdedede, type: 'snare' },
+  { name: 'tom1',    pos: [-0.28, 0.95, -0.65], radius: 0.14, color: 0xffffff, type: 'tom', pitch: 1.3 },
+  { name: 'tom2',    pos: [0.05, 0.95, -0.72], radius: 0.15, color: 0xffffff, type: 'tom', pitch: 1.0 },
+  { name: 'tom3',    pos: [0.38, 0.90, -0.65], radius: 0.16, color: 0xffffff, type: 'tom', pitch: 0.75 },
+  { name: 'floorTom',pos: [0.55, 0.55, -0.25], radius: 0.20, color: 0x8b5a2b, type: 'floortom' },
+  { name: 'hihat',   pos: [-0.55, 0.95, -0.15], radius: 0.16, color: 0xC0C0C0, type: 'hihat' },
+  { name: 'crash',   pos: [-0.55, 1.35, -0.55], radius: 0.20, color: 0xffd76a, type: 'cymbal', pitch: 1.15 },
+  { name: 'ride',    pos: [0.65, 1.25, -0.65], radius: 0.22, color: 0xffd76a, type: 'cymbal', pitch: 0.85 },
+  { name: 'kick',    pos: [0, 0.35, -0.85], radius: 0.24, color: 0x222222, type: 'kick' }
+];
+
+const drumMeshes = [];
+
+// ------------------------------------------------------------
+// Audio: Web Audio API synthesized drum sounds (no external files)
+// ------------------------------------------------------------
+let audioCtx;
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playDrumSound(type, velocity = 1.0, pitch = 1.0) {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const gain = audioCtx.createGain();
+  gain.connect(audioCtx.destination);
+  const vol = Math.min(1.0, 0.4 + velocity * 0.6);
+
+  if (type === 'kick') {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+    gain.gain.setValueAtTime(vol * 1.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    osc.connect(gain);
+    osc.start(t);
+    osc.stop(t + 0.4);
+  } else if (type === 'snare') {
+    // Noise burst + tone
+    const bufferSize = audioCtx.sampleRate * 0.2;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = audioCtx.createBiquadFilter();
+    noiseFilter.type = 'highpass';
+    noiseFilter.frequency.value = 1000;
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(vol, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    noise.connect(noiseFilter).connect(noiseGain).connect(audioCtx.destination);
+    noise.start(t);
+    noise.stop(t + 0.2);
+
+    const osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(200, t);
+    const oscGain = audioCtx.createGain();
+    oscGain.gain.setValueAtTime(vol * 0.5, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc.connect(oscGain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.12);
+  } else if (type === 'tom' || type === 'floortom') {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    const baseFreq = (type === 'floortom' ? 90 : 180) * pitch;
+    osc.frequency.setValueAtTime(baseFreq, t);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.6, t + 0.25);
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.connect(gain);
+    osc.start(t);
+    osc.stop(t + 0.45);
+  } else if (type === 'hihat') {
+    const bufferSize = audioCtx.sampleRate * 0.1;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 7000;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(vol * 0.7, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    noise.connect(filter).connect(g).connect(audioCtx.destination);
+    noise.start(t);
+    noise.stop(t + 0.1);
+  } else if (type === 'cymbal') {
+    const bufferSize = audioCtx.sampleRate * 1.0;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 6000 * pitch;
+    filter.Q.value = 0.6;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(vol * 0.8, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+    noise.connect(filter).connect(g).connect(audioCtx.destination);
+    noise.start(t);
+    noise.stop(t + 1.0);
+  }
+}
+
+// ------------------------------------------------------------
+// Scene setup
+// ------------------------------------------------------------
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x141420);
+  scene.fog = new THREE.Fog(0x141420, 4, 12);
+
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 50);
+  camera.position.set(0, 1.6, 1.2);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  // Lighting
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x333344, 1.0);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+  dir.position.set(2, 4, 2);
+  dir.castShadow = true;
+  dir.shadow.mapSize.set(1024, 1024);
+  scene.add(dir);
+
+  const spot = new THREE.SpotLight(0xfff2cc, 1.5, 8, Math.PI / 6, 0.4);
+  spot.position.set(0, 3.5, 0.5);
+  spot.target.position.set(0, 0.8, -0.5);
+  scene.add(spot);
+  scene.add(spot.target);
+
+  // Floor
+  const floorGeo = new THREE.CircleGeometry(6, 48);
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x2a2a35, roughness: 0.9 });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Rug under drum kit
+  const rugGeo = new THREE.CircleGeometry(1.4, 32);
+  const rugMat = new THREE.MeshStandardMaterial({ color: 0x7a1f2b, roughness: 1.0 });
+  const rug = new THREE.Mesh(rugGeo, rugMat);
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.set(0, 0.001, -0.4);
+  rug.receiveShadow = true;
+  scene.add(rug);
+
+  // Simple room walls (dim, for spatial reference)
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 1.0, side: THREE.BackSide });
+  const room = new THREE.Mesh(new THREE.BoxGeometry(12, 6, 12), wallMat);
+  room.position.y = 3;
+  scene.add(room);
+
+  buildDrumKit();
+
+  // Controllers
+  const controllerModelFactory = new XRControllerModelFactory();
+
+  controller0 = renderer.xr.getController(0);
+  controller1 = renderer.xr.getController(1);
+  scene.add(controller0);
+  scene.add(controller1);
+
+  controllerGrip0 = renderer.xr.getControllerGrip(0);
+  controllerGrip0.add(controllerModelFactory.createControllerModel(controllerGrip0));
+  scene.add(controllerGrip0);
+
+  controllerGrip1 = renderer.xr.getControllerGrip(1);
+  controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+  scene.add(controllerGrip1);
+
+  // Drumstick meshes attached to controllers
+  attachStick(controller0);
+  attachStick(controller1);
+
+  window.addEventListener('resize', onWindowResize);
+
+  renderer.setAnimationLoop(render);
+}
+
+function attachStick(controller) {
+  const group = new THREE.Group();
+  const stickGeo = new THREE.CylinderGeometry(0.008, 0.011, 0.32, 8);
+  const stickMat = new THREE.MeshStandardMaterial({ color: 0xd9a066, roughness: 0.6 });
+  const stick = new THREE.Mesh(stickGeo, stickMat);
+  stick.castShadow = true;
+  // stick points forward from the controller (-z is the natural pointing direction)
+  stick.rotation.x = -Math.PI / 2.1;
+  stick.position.set(0, 0.0, -0.14);
+  group.add(stick);
+
+  // tip marker for velocity tracking
+  const tip = new THREE.Object3D();
+  tip.position.set(0, 0.02, -0.30);
+  group.add(tip);
+  group.userData.tip = tip;
+
+  controller.add(group);
+  controller.userData.stickGroup = group;
+  controller.userData.prevTipPos = new THREE.Vector3();
+  controller.userData.tipVelocity = new THREE.Vector3();
+  controller.userData.lastHitTime = {};
+}
+
+// ------------------------------------------------------------
+// Build the drum kit meshes
+// ------------------------------------------------------------
+function buildDrumKit() {
+  // Stand / base cylinder for visual grounding
+  const standMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6, roughness: 0.4 });
+
+  drumDefs.forEach(def => {
+    const group = new THREE.Group();
+    group.position.set(def.pos[0], def.pos[1], def.pos[2]);
+
+    let bodyHeight = def.type === 'cymbal' || def.type === 'hihat' ? 0.02 : 0.26;
+    if (def.type === 'kick') bodyHeight = 0.4;
+    if (def.type === 'floortom') bodyHeight = 0.32;
+
+    // drum shell (cylinder) - not shown for cymbals
+    if (def.type !== 'cymbal' && def.type !== 'hihat') {
+      const shellGeo = new THREE.CylinderGeometry(def.radius, def.radius, bodyHeight, 24);
+      const shellColor = def.type === 'kick' ? 0x111111 : (def.type === 'floortom' ? 0x5a3a1a : 0xcc3333);
+      const shellMat = new THREE.MeshStandardMaterial({ color: shellColor, roughness: 0.5, metalness: 0.1 });
+      const shell = new THREE.Mesh(shellGeo, shellMat);
+      shell.position.y = -bodyHeight / 2;
+      shell.castShadow = true;
+      shell.receiveShadow = true;
+      group.add(shell);
+    }
+
+    // head/pad top surface — this is the actual hit-detection mesh
+    const headGeo = new THREE.CylinderGeometry(def.radius, def.radius, 0.02, 32);
+    const headMat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.7, metalness: def.type === 'cymbal' || def.type === 'hihat' ? 0.8 : 0.0 });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.castShadow = true;
+    head.receiveShadow = true;
+    group.add(head);
+
+    // Stand pole (thin cylinder to floor) for visual support, except kick which sits on floor
+    if (def.type !== 'kick') {
+      const poleHeight = def.pos[1];
+      const poleGeo = new THREE.CylinderGeometry(0.015, 0.015, poleHeight, 8);
+      const pole = new THREE.Mesh(poleGeo, standMat);
+      pole.position.set(def.pos[0], -def.pos[1] / 2 - (def.type === 'cymbal' || def.type === 'hihat' ? 0.01 : bodyHeight), def.pos[2]);
+      pole.castShadow = true;
+      scene.add(pole);
+    }
+
+    scene.add(group);
+
+    drumMeshes.push({
+      def, group, head,
+      originalY: head.position.y,
+      hitAnim: 0
+    });
+  });
+
+  // Simple throne (seat) - visual only
+  const seatGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.05, 20);
+  const seatMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+  const seat = new THREE.Mesh(seatGeo, seatMat);
+  seat.position.set(0, 0.5, 0.35);
+  seat.castShadow = true;
+  scene.add(seat);
+  const seatPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.5,8), seatMat);
+  seatPole.position.set(0, 0.25, 0.35);
+  scene.add(seatPole);
+}
+
+// ------------------------------------------------------------
+// Hit detection
+// ------------------------------------------------------------
+const tmpTipWorld = new THREE.Vector3();
+const tmpPrev = new THREE.Vector3();
+
+function checkHits(controller, dt) {
+  if (!controller.userData.stickGroup) return;
+  const tip = controller.userData.stickGroup.userData.tip;
+  tip.getWorldPosition(tmpTipWorld);
+
+  const prev = controller.userData.prevTipPos;
+  if (prev.lengthSq() === 0) {
+    prev.copy(tmpTipWorld);
+    return;
+  }
+
+  const velocity = tmpTipWorld.clone().sub(prev).divideScalar(Math.max(dt, 0.0001));
+  const speed = velocity.length();
+  const downwardSpeed = -velocity.y; // positive if moving downward
+
+  drumMeshes.forEach(dm => {
+    const headWorldPos = new THREE.Vector3();
+    dm.head.getWorldPosition(headWorldPos);
+    const dx = tmpTipWorld.x - headWorldPos.x;
+    const dz = tmpTipWorld.z - headWorldPos.z;
+    const distXZ = Math.sqrt(dx * dx + dz * dz);
+    const yDiff = tmpTipWorld.y - headWorldPos.y;
+
+    const withinRadius = distXZ < dm.def.radius * 1.1;
+    const nearSurface = Math.abs(yDiff) < 0.05;
+    const crossedDownward = (prev.y - headWorldPos.y) > 0 && yDiff <= 0.02;
+
+    const now = performance.now();
+    const lastHit = controller.userData.lastHitTime[dm.def.name] || 0;
+    const cooldownOk = (now - lastHit) > 120;
+
+    if (withinRadius && nearSurface && crossedDownward && cooldownOk && speed > 0.3) {
+      // HIT!
+      controller.userData.lastHitTime[dm.def.name] = now;
+      const velocityFactor = Math.min(1.0, speed / 4.0);
+      playDrumSound(dm.def.type, velocityFactor, dm.def.pitch || 1.0);
+      dm.hitAnim = 1.0;
+      hitCount++;
+      hitCountEl.textContent = hitCount;
+
+      // haptic feedback
+      const session = renderer.xr.getSession();
+      if (session) {
+        const src = [...session.inputSources].find(s => {
+          return s.gamepad && controller.userData.handedness === s.handedness;
+        });
+      }
+      triggerHaptic(controller, Math.min(1.0, 0.4 + velocityFactor * 0.6), 60);
+    }
+  });
+
+  prev.copy(tmpTipWorld);
+}
+
+function triggerHaptic(controller, intensity, duration) {
+  const session = renderer.xr.getSession && renderer.xr.getSession();
+  if (!session) return;
+  for (const source of session.inputSources) {
+    if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators.length > 0) {
+      // Match by comparing target ray space if possible; otherwise pulse both (harmless)
+      try {
+        source.gamepad.hapticActuators[0].pulse(intensity, duration);
+      } catch (e) {}
+    }
+  }
+}
+
+// ------------------------------------------------------------
+// Render loop
+// ------------------------------------------------------------
+function render() {
+  const dt = clock.getDelta();
+
+  checkHits(controller0, dt);
+  checkHits(controller1, dt);
+
+  // animate drum heads (squash on hit)
+  drumMeshes.forEach(dm => {
+    if (dm.hitAnim > 0) {
+      dm.hitAnim -= dt * 6;
+      if (dm.hitAnim < 0) dm.hitAnim = 0;
+      const scale = 1 - dm.hitAnim * 0.06;
+      dm.head.scale.set(1, scale, 1);
+      dm.head.position.y = dm.originalY - dm.hitAnim * 0.01;
+    } else {
+      dm.head.scale.set(1, 1, 1);
+      dm.head.position.y = dm.originalY;
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ------------------------------------------------------------
+// WebXR session bootstrap
+// ------------------------------------------------------------
+init();
+
+if ('xr' in navigator) {
+  navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+    if (supported) {
+      enterBtn.disabled = false;
+      enterBtn.textContent = 'VRモードで開始';
+    } else {
+      enterBtn.textContent = 'VR非対応の端末です';
+      statusEl.textContent = 'このブラウザ/端末はimmersive-vrに対応していません。';
+    }
+  }).catch(err => {
+    enterBtn.textContent = 'VR確認エラー';
+    statusEl.textContent = String(err);
+  });
+} else {
+  enterBtn.textContent = 'WebXR非対応ブラウザ';
+  statusEl.textContent = 'Quest 3sのブラウザ(Meta Quest Browser)でアクセスしてください。https接続が必要です。';
+}
+
+enterBtn.addEventListener('click', async () => {
+  ensureAudio();
+  try {
+    const session = await navigator.xr.requestSession('immersive-vr', {
+      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+    });
+    renderer.xr.setSession(session);
+    overlay.style.display = 'none';
+    hud.style.display = 'block';
+
+    session.addEventListener('end', () => {
+      overlay.style.display = 'flex';
+      hud.style.display = 'none';
+    });
+
+    // track handedness for haptics matching
+    session.addEventListener('inputsourceschange', (evt) => {
+      evt.added.forEach(src => {
+        if (src.handedness === 'left') controller0.userData.handedness = 'left';
+        if (src.handedness === 'right') controller1.userData.handedness = 'right';
+      });
+    });
+  } catch (err) {
+    statusEl.textContent = 'VRセッション開始に失敗しました: ' + err.message;
+  }
+});
+</script>
+</body>
+</html>
