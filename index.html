@@ -17,6 +17,7 @@
     color: white;
     background: radial-gradient(circle at 50% 40%, #1a1a2e, #0a0a12);
     z-index: 20; text-align: center; padding: 20px; box-sizing: border-box;
+    overflow-y: auto;
   }
   #overlay h1 {
     font-size: 2.2em; margin-bottom: 0.1em;
@@ -24,8 +25,8 @@
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   #overlay p { color: #aaa; max-width: 520px; line-height: 1.6; font-size: 0.92em; }
-  .section-title { color: #feca57; margin-top: 22px; margin-bottom: 8px; font-size: 1.05em; }
-  .choice-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 560px; }
+  .section-title { color: #feca57; margin-top: 20px; margin-bottom: 8px; font-size: 1.05em; }
+  .choice-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 600px; }
   .choice-btn {
     padding: 12px 20px; border-radius: 14px; border: 2px solid #444;
     background: #1e1e2a; color: #ddd; cursor: pointer; font-size: 0.95em;
@@ -39,19 +40,57 @@
   .choice-btn small { display: block; color: #888; font-size: 0.8em; margin-top: 2px; }
   .choice-btn.selected small { color: #ddd; }
   #enterVR {
-    margin-top: 26px; padding: 16px 44px; font-size: 1.2em; border-radius: 40px; border: none;
+    margin-top: 22px; padding: 16px 44px; font-size: 1.2em; border-radius: 40px; border: none;
     background: linear-gradient(90deg, #ff6b6b, #feca57); color: #111; font-weight: bold;
     cursor: pointer; box-shadow: 0 8px 24px rgba(255,107,107,0.4);
   }
   #enterVR:disabled { background: #444; color: #888; box-shadow: none; cursor: not-allowed; }
   #status { margin-top: 14px; font-size: 0.85em; color: #ff6b6b; min-height: 1.2em; }
 
+  #importBox {
+    margin-top: 8px; padding: 14px 20px; border: 2px dashed #555; border-radius: 14px;
+    max-width: 480px; background: rgba(255,255,255,0.02);
+  }
+  #importBox.dragover { border-color: #feca57; background: rgba(254,202,87,0.08); }
+  #importBox label {
+    display: inline-block; padding: 10px 22px; border-radius: 24px;
+    background: #2a2a3a; color: #ddd; cursor: pointer; font-size: 0.9em; margin-top: 6px;
+  }
+  #importStatus { margin-top: 8px; font-size: 0.82em; color: #48dbfb; min-height: 1.2em; }
+  #importedSongsList { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; max-width: 480px; }
+
   #hud {
     position: absolute; top: 12px; left: 12px; color: #fff;
     background: rgba(0,0,0,0.45); padding: 10px 16px; border-radius: 10px;
-    font-size: 14px; z-index: 5; display: none; line-height: 1.5;
+    font-size: 14px; z-index: 5; display: none; line-height: 1.5; min-width: 160px;
   }
-  #hud .big { font-size: 1.4em; font-weight: bold; color: #feca57; }
+  #hud .big { font-size: 1.6em; font-weight: bold; color: #feca57; }
+  #hud .combo { font-size: 1.2em; font-weight: bold; }
+  #hud .combo.active { color: #ff8844; }
+
+  #progressBarWrap {
+    position: absolute; top: 0; left: 0; width: 100%; height: 6px;
+    background: rgba(255,255,255,0.08); z-index: 6; display: none;
+  }
+  #progressBarFill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #48dbfb, #feca57, #ff6b6b);
+    transition: width 0.1s linear;
+  }
+
+  #judgeEffect {
+    position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 2.4em; font-weight: 900; letter-spacing: 2px; z-index: 8;
+    opacity: 0; pointer-events: none; text-shadow: 0 0 16px currentColor, 0 2px 4px rgba(0,0,0,0.6);
+  }
+  @keyframes judgePop {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+    30% { transform: translate(-50%, -50%) scale(1.0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -60%) scale(0.9); }
+  }
+
   #resultScreen {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     display: none; flex-direction: column; align-items: center; justify-content: center;
@@ -72,12 +111,20 @@
   <h1>🥁 VR DRUM RHYTHM</h1>
   <p>
     Meta Quest 3s のコントローラーをスティックにして、飛んでくるノーツをドラムで叩くリズムゲームです。<br>
-    曲・難易度を選んでVRモードに入ってください。<br>
-    <small style="color:#666;">※収録曲はすべてゲーム内でオリジナル生成されたロック風楽曲です(著作権フリー・外部音源不使用)</small>
+    曲・難易度を選んでVRモードに入ってください。
   </p>
 
   <div class="section-title">🎵 曲を選択</div>
   <div class="choice-row" id="songChoices"></div>
+
+  <div class="section-title">📁 自分の曲をインポート</div>
+  <div id="importBox">
+    <div style="font-size:0.85em; color:#999;">音楽ファイル(mp3/wav/m4aなど)をドラッグ&ドロップ、またはボタンで選択。<br>BPM・ドラム音を自動解析して譜面を生成します。</div>
+    <label for="fileInput">🎧 ファイルを選択</label>
+    <input type="file" id="fileInput" accept="audio/*" multiple style="display:none;">
+    <div id="importStatus"></div>
+    <div id="importedSongsList"></div>
+  </div>
 
   <div class="section-title">⚡ 難易度を選択</div>
   <div class="choice-row" id="diffChoices">
@@ -90,21 +137,24 @@
   <div id="status"></div>
 </div>
 
+<div id="progressBarWrap"><div id="progressBarFill"></div></div>
+
 <div id="resultScreen">
   <h2>🎉 SONG COMPLETE!</h2>
   <div class="stat">曲: <span id="resSong"></span></div>
   <div class="stat">スコア: <span id="resScore"></span></div>
   <div class="stat">最大コンボ: <span id="resCombo"></span></div>
-  <div class="stat">PERFECT: <span id="resPerfect"></span> / GOOD: <span id="resGood"></span> / MISS: <span id="resMiss"></span></div>
+  <div class="stat">PERFECT: <span id="resPerfect"></span> / GREAT: <span id="resGreat"></span> / GOOD: <span id="resGood"></span> / BAD: <span id="resBad"></span> / MISS: <span id="resMiss"></span></div>
   <div class="stat">精度: <span id="resAccuracy"></span>%</div>
   <button id="backToMenu">曲選択に戻る</button>
 </div>
 
 <div id="hud">
   <div class="big"><span id="scoreVal">0</span> pts</div>
-  <div>Combo: <span id="comboVal">0</span></div>
-  <div id="judgeText" style="height:18px; color:#feca57;"></div>
+  <div class="combo" id="comboDisplay">Combo: <span id="comboVal">0</span></div>
 </div>
+
+<div id="judgeEffect"></div>
 
 <script type="importmap">
 {
@@ -120,7 +170,7 @@ import * as THREE from 'three';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
 // ============================================================
-// UI state
+// UI references
 // ============================================================
 const overlay = document.getElementById('overlay');
 const enterBtn = document.getElementById('enterVR');
@@ -129,66 +179,64 @@ const hud = document.getElementById('hud');
 const resultScreen = document.getElementById('resultScreen');
 const scoreValEl = document.getElementById('scoreVal');
 const comboValEl = document.getElementById('comboVal');
-const judgeTextEl = document.getElementById('judgeText');
+const comboDisplayEl = document.getElementById('comboDisplay');
+const judgeEffectEl = document.getElementById('judgeEffect');
+const progressBarWrap = document.getElementById('progressBarWrap');
+const progressBarFill = document.getElementById('progressBarFill');
+const fileInput = document.getElementById('fileInput');
+const importBox = document.getElementById('importBox');
+const importStatus = document.getElementById('importStatus');
+const importedSongsListEl = document.getElementById('importedSongsList');
 
-// ------------------------------------------------------------
-// Songs: fully original, royalty-free, generated in-browser.
-// Each song = chord progression + BPM + style params used by the synth.
-// No external audio files, no copyrighted melodies — 100% procedural.
-// ------------------------------------------------------------
-const SONGS = [
+// ============================================================
+// Built-in songs: fully original, procedurally generated backing
+// tracks (no external audio, no copyrighted material).
+// ============================================================
+const BUILTIN_SONGS = [
   {
-    id: 'garage',
-    title: 'Garage Ignition',
-    subtitle: 'ミドルテンポ・パワーコード',
-    bpm: 128,
-    bars: 24,
-    // chord roots in semitones from A2, drives the bass/guitar synth riff
-    progression: [0, 0, 5, 7, 0, 0, 5, 3],
-    style: 'punchy'
+    id: 'garage', title: 'Garage Ignition', subtitle: 'ロック / パワーコード',
+    bpm: 128, bars: 24, progression: [0, 0, 5, 7, 0, 0, 5, 3], genre: 'rock', builtin: true
   },
   {
-    id: 'highway',
-    title: 'Highway Overdrive',
-    subtitle: 'アップテンポ・疾走感',
-    bpm: 150,
-    bars: 28,
-    progression: [0, 5, 3, 7, 0, 5, 8, 7],
-    style: 'driving'
+    id: 'highway', title: 'Highway Overdrive', subtitle: 'パンク調 / 疾走感',
+    bpm: 168, bars: 28, progression: [0, 5, 3, 7, 0, 5, 8, 7], genre: 'punk', builtin: true
   },
   {
-    id: 'stadium',
-    title: 'Stadium Anthem',
-    subtitle: 'ミッドテンポ・壮大',
-    bpm: 112,
-    bars: 20,
-    progression: [0, 7, 5, 5, 3, 7, 0, 0],
-    style: 'anthem'
+    id: 'stadium', title: 'Stadium Anthem', subtitle: 'ハードロック / 壮大',
+    bpm: 96, bars: 20, progression: [0, 7, 5, 5, 3, 7, 0, 0], genre: 'hardrock', builtin: true
   }
 ];
 
-let selectedSong = SONGS[0];
+let allSongs = [...BUILTIN_SONGS];
+let selectedSong = allSongs[0];
 let selectedDiff = 'normal';
 
 const DIFF_SETTINGS = {
-  easy:   { density: 0.45, speedMul: 0.85, label: '簡単' },
-  normal: { density: 0.7,  speedMul: 1.0,  label: '普通' },
+  easy:   { density: 0.5,  speedMul: 0.85, label: '簡単' },
+  normal: { density: 0.75, speedMul: 1.0,  label: '普通' },
   hard:   { density: 1.0,  speedMul: 1.2,  label: '難しい' }
 };
 
-// Build song selection buttons
+// ============================================================
+// Song selection UI
+// ============================================================
 const songChoicesEl = document.getElementById('songChoices');
-SONGS.forEach((song, i) => {
-  const btn = document.createElement('button');
-  btn.className = 'choice-btn' + (i === 0 ? ' selected' : '');
-  btn.innerHTML = `${song.title}<small>${song.subtitle} / BPM${song.bpm}</small>`;
-  btn.addEventListener('click', () => {
-    selectedSong = song;
-    [...songChoicesEl.children].forEach(c => c.classList.remove('selected'));
-    btn.classList.add('selected');
+function renderSongChoices() {
+  songChoicesEl.innerHTML = '';
+  allSongs.forEach((song) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn' + (song === selectedSong ? ' selected' : '');
+    const tag = song.builtin ? '' : ' 📁';
+    btn.innerHTML = `${song.title}${tag}<small>${song.subtitle} / BPM${Math.round(song.bpm)}</small>`;
+    btn.addEventListener('click', () => {
+      selectedSong = song;
+      [...songChoicesEl.children].forEach(c => c.classList.remove('selected'));
+      btn.classList.add('selected');
+    });
+    songChoicesEl.appendChild(btn);
   });
-  songChoicesEl.appendChild(btn);
-});
+}
+renderSongChoices();
 
 const diffChoicesEl = document.getElementById('diffChoices');
 [...diffChoicesEl.children].forEach(btn => {
@@ -205,28 +253,240 @@ document.getElementById('backToMenu').addEventListener('click', () => {
 });
 
 // ============================================================
+// Music import + analysis (BPM detection + onset detection)
+// ============================================================
+['dragover', 'dragenter'].forEach(evt => importBox.addEventListener(evt, (e) => {
+  e.preventDefault(); importBox.classList.add('dragover');
+}));
+['dragleave', 'drop'].forEach(evt => importBox.addEventListener(evt, (e) => {
+  e.preventDefault(); importBox.classList.remove('dragover');
+}));
+importBox.addEventListener('drop', (e) => {
+  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('audio/'));
+  if (files.length) handleImportedFiles(files);
+});
+fileInput.addEventListener('change', (e) => {
+  const files = [...e.target.files];
+  if (files.length) handleImportedFiles(files);
+});
+
+async function handleImportedFiles(files) {
+  for (const file of files) {
+    importStatus.textContent = `解析中: ${file.name} ...`;
+    try {
+      const song = await analyzeAudioFile(file);
+      allSongs.push(song);
+      renderSongChoices();
+      selectedSong = song;
+      renderSongChoices();
+      const item = document.createElement('div');
+      item.style.cssText = 'font-size:0.82em; color:#8f8; text-align:left;';
+      item.textContent = `✓ ${song.title} — BPM${Math.round(song.bpm)} / ${genreLabel(song.genre)} / ノーツ${song.analyzedNoteCount}個検出`;
+      importedSongsListEl.appendChild(item);
+      importStatus.textContent = `解析完了: ${file.name}`;
+    } catch (err) {
+      console.error(err);
+      importStatus.textContent = `解析失敗: ${file.name} (${err.message})`;
+    }
+  }
+}
+
+function genreLabel(g) {
+  return { rock: 'ロック', punk: 'パンク', hardrock: 'ハードロック' }[g] || 'ロック';
+}
+
+// --- FFT (iterative radix-2, in-place) ---
+function fftInPlace(real, imag) {
+  const n = real.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [real[i], real[j]] = [real[j], real[i]];
+      [imag[i], imag[j]] = [imag[j], imag[i]];
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let curWr = 1, curWi = 0;
+      for (let j = 0; j < len / 2; j++) {
+        const ur = real[i + j], ui = imag[i + j];
+        const vr = real[i + j + len/2] * curWr - imag[i + j + len/2] * curWi;
+        const vi = real[i + j + len/2] * curWi + imag[i + j + len/2] * curWr;
+        real[i + j] = ur + vr; imag[i + j] = ui + vi;
+        real[i + j + len/2] = ur - vr; imag[i + j + len/2] = ui - vi;
+        const nWr = curWr * wr - curWi * wi;
+        const nWi = curWr * wi + curWi * wr;
+        curWr = nWr; curWi = nWi;
+      }
+    }
+  }
+}
+
+function mixToMono(audioBuffer) {
+  const len = audioBuffer.length;
+  const result = new Float32Array(len);
+  const chCount = audioBuffer.numberOfChannels;
+  for (let ch = 0; ch < chCount; ch++) {
+    const data = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < len; i++) result[i] += data[i] / chCount;
+  }
+  return result;
+}
+
+// Band-split onset detection: low(tom/floor), mid(snare), high(hihat/cymbal)
+function detectOnsetsAndBpm(channelData, sampleRate) {
+  const fftSize = 2048;
+  const hopSize = 512;
+  const numFrames = Math.floor((channelData.length - fftSize) / hopSize);
+
+  const hann = new Float32Array(fftSize);
+  for (let i = 0; i < fftSize; i++) hann[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (fftSize - 1));
+
+  const bands = { low: [20, 150], mid: [150, 1200], high: [3000, 10000] };
+  const bandBins = {};
+  for (const [name, [lo, hi]] of Object.entries(bands)) {
+    bandBins[name] = [Math.max(1, Math.floor(lo * fftSize / sampleRate)), Math.min(fftSize/2 - 1, Math.ceil(hi * fftSize / sampleRate))];
+  }
+
+  const real = new Float32Array(fftSize);
+  const imag = new Float32Array(fftSize);
+  let prevEnergy = { low: 0, mid: 0, high: 0 };
+  const flux = { low: [], mid: [], high: [] };
+
+  for (let frame = 0; frame < numFrames; frame++) {
+    const offset = frame * hopSize;
+    for (let i = 0; i < fftSize; i++) {
+      real[i] = channelData[offset + i] * hann[i];
+      imag[i] = 0;
+    }
+    fftInPlace(real, imag);
+    for (const [name, [loBin, hiBin]] of Object.entries(bandBins)) {
+      let energy = 0;
+      for (let b = loBin; b < hiBin; b++) energy += Math.sqrt(real[b]*real[b] + imag[b]*imag[b]);
+      const diff = Math.max(0, energy - prevEnergy[name]);
+      flux[name].push(diff);
+      prevEnergy[name] = energy;
+    }
+  }
+
+  const onsets = [];
+  for (const bandName of ['low', 'mid', 'high']) {
+    const series = flux[bandName];
+    const mean = series.reduce((a,b)=>a+b,0) / series.length;
+    const std = Math.sqrt(series.reduce((a,b)=>a+(b-mean)**2,0) / series.length);
+    const threshold = mean + std * 1.3;
+    let lastOnsetFrame = -10;
+    for (let i = 2; i < series.length - 2; i++) {
+      if (series[i] > threshold && series[i] >= series[i-1] && series[i] >= series[i+1] && (i - lastOnsetFrame) > 3) {
+        onsets.push({ time: (i * hopSize) / sampleRate, band: bandName, strength: series[i] / (mean + 0.0001) });
+        lastOnsetFrame = i;
+      }
+    }
+  }
+  onsets.sort((a,b) => a.time - b.time);
+
+  // BPM via inter-onset interval histogram (all bands combined, weighted toward low+mid for beat tracking)
+  const beatOnsets = onsets.filter(o => o.band === 'low' || o.band === 'mid').map(o => o.time);
+  const times = beatOnsets.length > 8 ? beatOnsets : onsets.map(o => o.time);
+  const intervals = [];
+  for (let i = 0; i < times.length; i++) {
+    for (let j = i+1; j < Math.min(i+8, times.length); j++) {
+      const dt = times[j] - times[i];
+      if (dt > 0.2 && dt < 1.5) intervals.push(dt);
+    }
+  }
+  let bpm = 120;
+  if (intervals.length > 0) {
+    const votes = {};
+    intervals.forEach(dt => {
+      let b = 60 / dt;
+      while (b < 80) b *= 2;
+      while (b > 180) b /= 2;
+      const bucket = Math.round(b);
+      votes[bucket] = (votes[bucket] || 0) + 1;
+    });
+    let bestBpm = 120, bestVotes = 0;
+    for (const [b, v] of Object.entries(votes)) if (v > bestVotes) { bestVotes = v; bestBpm = Number(b); }
+    bpm = bestBpm;
+  }
+
+  return { onsets, bpm };
+}
+
+async function analyzeAudioFile(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+  const mono = audioBuffer.numberOfChannels > 1 ? mixToMono(audioBuffer) : audioBuffer.getChannelData(0);
+
+  const { onsets, bpm } = detectOnsetsAndBpm(mono, audioBuffer.sampleRate);
+
+  // Map band -> lane using real-drum-like assignment:
+  // low -> floortom/tom (toms), mid -> snare, high -> hihat/crash/ride
+  const laneNotes = onsets.map(o => {
+    let lane;
+    if (o.band === 'low') {
+      lane = Math.random() < 0.5 ? 'floortom' : 'tom2';
+    } else if (o.band === 'mid') {
+      lane = 'snare';
+    } else {
+      lane = o.strength > 3.5 ? 'crash' : (Math.random() < 0.7 ? 'hihat' : 'ride');
+    }
+    return { time: o.time, lane, judged: false, hit: false };
+  });
+
+  // De-duplicate: merge onsets within 40ms across bands (keep the strongest / prioritize snare)
+  laneNotes.sort((a,b) => a.time - b.time);
+  const merged = [];
+  laneNotes.forEach(n => {
+    const last = merged[merged.length - 1];
+    if (last && Math.abs(n.time - last.time) < 0.04) return; // skip near-duplicate
+    merged.push(n);
+  });
+
+  // decode object URL for playback
+  const objectUrl = URL.createObjectURL(file);
+
+  return {
+    id: 'import_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+    title: file.name.replace(/\.[^.]+$/, ''),
+    subtitle: 'インポート曲',
+    bpm,
+    genre: bpm >= 145 ? 'punk' : (bpm < 110 ? 'hardrock' : 'rock'),
+    builtin: false,
+    audioUrl: objectUrl,
+    duration: audioBuffer.duration,
+    analyzedNotes: merged,
+    analyzedNoteCount: merged.length
+  };
+}
+
+// ============================================================
 // Three.js / WebXR setup
 // ============================================================
 let scene, camera, renderer;
 let controller0, controller1, controllerGrip0, controllerGrip1;
 const clock = new THREE.Clock();
 
+// Drum kit WITHOUT kick (VR-incompatible), real acoustic layout
 const drumDefs = [
   { name: 'snare',   pos: [0, 0.85, -0.45], radius: 0.18, color: 0xdedede, type: 'snare',   lane: 'snare' },
-  { name: 'tom1',    pos: [-0.28, 0.95, -0.65], radius: 0.14, color: 0xffffff, type: 'tom', pitch: 1.3, lane: 'tom1' },
-  { name: 'tom2',    pos: [0.05, 0.95, -0.72], radius: 0.15, color: 0xffffff, type: 'tom', pitch: 1.0, lane: 'tom2' },
-  { name: 'tom3',    pos: [0.38, 0.90, -0.65], radius: 0.16, color: 0xffffff, type: 'tom', pitch: 0.75, lane: 'tom3' },
+  { name: 'tom1',    pos: [-0.22, 0.95, -0.68], radius: 0.15, color: 0xffffff, type: 'tom', pitch: 1.25, lane: 'tom1' },
+  { name: 'tom2',    pos: [0.18, 0.92, -0.72], radius: 0.16, color: 0xffffff, type: 'tom', pitch: 0.9, lane: 'tom2' },
   { name: 'floorTom',pos: [0.55, 0.55, -0.25], radius: 0.20, color: 0x8b5a2b, type: 'floortom', lane: 'floortom' },
   { name: 'hihat',   pos: [-0.55, 0.95, -0.15], radius: 0.16, color: 0xC0C0C0, type: 'hihat', lane: 'hihat' },
   { name: 'crash',   pos: [-0.55, 1.35, -0.55], radius: 0.20, color: 0xffd76a, type: 'cymbal', pitch: 1.15, lane: 'crash' },
-  { name: 'ride',    pos: [0.65, 1.25, -0.65], radius: 0.22, color: 0xffd76a, type: 'cymbal', pitch: 0.85, lane: 'ride' },
-  { name: 'kick',    pos: [0, 0.35, -0.85], radius: 0.24, color: 0x222222, type: 'kick', lane: 'kick' }
+  { name: 'ride',    pos: [0.65, 1.25, -0.65], radius: 0.22, color: 0xffd76a, type: 'cymbal', pitch: 0.85, lane: 'ride' }
 ];
 const drumMeshes = [];
-const laneMap = {}; // lane name -> drumMesh entry
+const laneMap = {};
 
 // ============================================================
-// Audio engine (Web Audio API) — drum hit sounds + procedural song synth
+// Audio engine
 // ============================================================
 let audioCtx;
 function ensureAudio() {
@@ -239,21 +499,11 @@ function playDrumSound(type, velocity = 1.0, pitch = 1.0) {
   const t = audioCtx.currentTime;
   const vol = Math.min(1.0, 0.4 + velocity * 0.6);
 
-  if (type === 'kick') {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, t);
-    osc.frequency.exponentialRampToValueAtTime(40, t + 0.15);
-    gain.gain.setValueAtTime(vol * 1.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t); osc.stop(t + 0.4);
-  } else if (type === 'snare') {
+  if (type === 'snare') {
     const bufferSize = audioCtx.sampleRate * 0.2;
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random()*2-1) * (1 - i/bufferSize);
     const noise = audioCtx.createBufferSource();
     noise.buffer = buffer;
     const noiseFilter = audioCtx.createBiquadFilter();
@@ -267,7 +517,7 @@ function playDrumSound(type, velocity = 1.0, pitch = 1.0) {
     const osc = audioCtx.createOscillator();
     osc.type = 'triangle'; osc.frequency.setValueAtTime(200, t);
     const oscGain = audioCtx.createGain();
-    oscGain.gain.setValueAtTime(vol * 0.5, t);
+    oscGain.gain.setValueAtTime(vol*0.5, t);
     oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
     osc.connect(oscGain).connect(audioCtx.destination);
     osc.start(t); osc.stop(t + 0.12);
@@ -286,13 +536,13 @@ function playDrumSound(type, velocity = 1.0, pitch = 1.0) {
     const bufferSize = audioCtx.sampleRate * 0.1;
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random()*2-1;
     const noise = audioCtx.createBufferSource();
     noise.buffer = buffer;
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'highpass'; filter.frequency.value = 7000;
     const g = audioCtx.createGain();
-    g.gain.setValueAtTime(vol * 0.7, t);
+    g.gain.setValueAtTime(vol*0.7, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
     noise.connect(filter).connect(g).connect(audioCtx.destination);
     noise.start(t); noise.stop(t + 0.1);
@@ -300,28 +550,23 @@ function playDrumSound(type, velocity = 1.0, pitch = 1.0) {
     const bufferSize = audioCtx.sampleRate * 1.0;
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random()*2-1) * Math.pow(1 - i/bufferSize, 2);
     const noise = audioCtx.createBufferSource();
     noise.buffer = buffer;
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'bandpass'; filter.frequency.value = 6000 * pitch; filter.Q.value = 0.6;
     const g = audioCtx.createGain();
-    g.gain.setValueAtTime(vol * 0.8, t);
+    g.gain.setValueAtTime(vol*0.8, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
     noise.connect(filter).connect(g).connect(audioCtx.destination);
     noise.start(t); noise.stop(t + 1.0);
   }
 }
 
-// --- Backing track synth: distorted power-chord guitar riff + bass, purely procedural ---
-function midiToFreq(semitoneFromA2) {
-  // A2 = 110Hz base
-  return 110 * Math.pow(2, semitoneFromA2 / 12);
-}
-
+// --- Procedural backing track synth (built-in songs only) ---
+function midiToFreq(semitoneFromA2) { return 110 * Math.pow(2, semitoneFromA2 / 12); }
 function makeDistortionCurve(amount) {
-  const k = amount;
-  const n = 44100;
+  const k = amount, n = 44100;
   const curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const x = (i * 2) / n - 1;
@@ -329,9 +574,7 @@ function makeDistortionCurve(amount) {
   }
   return curve;
 }
-
-let masterGain, distortion, songNodesActive = [];
-
+let masterGain, distortion;
 function initSongAudioGraph() {
   ensureAudio();
   masterGain = audioCtx.createGain();
@@ -341,10 +584,8 @@ function initSongAudioGraph() {
   distortion.oversample = '4x';
   distortion.connect(masterGain).connect(audioCtx.destination);
 }
-
-function playChordHit(rootSemitone, startTime, dur, style) {
-  // Power chord = root + fifth, run through distortion
-  const freqs = [midiToFreq(rootSemitone), midiToFreq(rootSemitone + 7), midiToFreq(rootSemitone - 12)];
+function playChordHit(rootSemitone, startTime, dur) {
+  const freqs = [midiToFreq(rootSemitone), midiToFreq(rootSemitone+7), midiToFreq(rootSemitone-12)];
   freqs.forEach((f, idx) => {
     const osc = audioCtx.createOscillator();
     osc.type = idx === 2 ? 'sawtooth' : 'square';
@@ -359,23 +600,128 @@ function playChordHit(rootSemitone, startTime, dur, style) {
     osc.stop(startTime + dur + 0.05);
   });
 }
-
-// Schedules the whole song's backing track ahead of time using precise Web Audio timing.
-function scheduleSong(song, startTime) {
+function scheduleBuiltinBackingTrack(song, startTime) {
   const beatDur = 60 / song.bpm;
   const barDur = beatDur * 4;
   let t = startTime;
   for (let bar = 0; bar < song.bars; bar++) {
     const root = song.progression[bar % song.progression.length];
-    // 8th-note power chord chugs (palm-mute style rock rhythm)
-    for (let e = 0; e < 8; e++) {
-      const hitTime = t + e * (beatDur / 2);
-      const isAccent = (e === 0 || e === 4);
-      playChordHit(root, hitTime, beatDur / 2 * 0.9, song.style);
-    }
+    for (let e = 0; e < 8; e++) playChordHit(root, t + e * (beatDur/2), beatDur/2 * 0.9);
     t += barDur;
   }
-  return t; // end time
+  return t;
+}
+
+// ============================================================
+// Chart generation — mimics REAL drum playing patterns by genre
+// ============================================================
+// Genre patterns define, per 8th-note step within a bar (0-7):
+//   hihat/ride pattern, snare backbeat positions, and fill behavior.
+// This models actual rock drumming: steady hihat pulse + backbeat on 2 & 4,
+// toms used for fills, crash accents on phrase starts.
+const GENRE_PATTERNS = {
+  rock: {
+    // Standard 8-beat: hihat every 8th note, snare on 2 & 4
+    hihatSteps: [0,1,2,3,4,5,6,7],
+    rideOnChorus: false,
+    snareSteps: [2, 6], // beat 2 and beat 4 (in 8th-note steps, 0-indexed, 2 steps = 1 beat)
+    fillEvery: 4,
+    fillDensity: 0.8
+  },
+  punk: {
+    // Fast 16th-note-feel hihat/snare-driven, simpler fills, more energy
+    hihatSteps: [0,1,2,3,4,5,6,7],
+    rideOnChorus: false,
+    snareSteps: [2, 6],
+    extraSnareSteps: [1, 5], // punk often adds extra snare hits for drive
+    fillEvery: 8,
+    fillDensity: 0.5
+  },
+  hardrock: {
+    // Heavier, ride-driven, wider fills, half-time feel possible
+    hihatSteps: [0,2,4,6],
+    rideOnChorus: true,
+    snareSteps: [2, 6],
+    fillEvery: 4,
+    fillDensity: 1.0
+  }
+};
+
+function generateChartForBuiltinSong(song, diffKey) {
+  const settings = DIFF_SETTINGS[diffKey];
+  const pattern = GENRE_PATTERNS[song.genre] || GENRE_PATTERNS.rock;
+  const beatDur = 60 / song.bpm;
+  const barDur = beatDur * 4;
+  const stepDur = beatDur / 2; // 8th note
+  const notes = [];
+  const tomCycle = ['tom1', 'tom2', 'floortom', 'tom2', 'tom1'];
+  let tomIdx = 0;
+
+  for (let bar = 0; bar < song.bars; bar++) {
+    const barStart = bar * barDur;
+    const isFillBar = (bar % pattern.fillEvery === pattern.fillEvery - 1);
+    const useRide = pattern.rideOnChorus && (bar % 8 >= 4);
+
+    // Hihat/ride pulse (thinned by density for easier difficulties)
+    if (!isFillBar || Math.random() > 0.5) {
+      pattern.hihatSteps.forEach(step => {
+        if (Math.random() < (0.5 + settings.density * 0.5)) {
+          notes.push({ time: barStart + step * stepDur, lane: useRide ? 'ride' : 'hihat' });
+        }
+      });
+    }
+
+    // Snare backbeat — the anchor of realistic rock drumming, always present
+    pattern.snareSteps.forEach(step => {
+      notes.push({ time: barStart + step * stepDur, lane: 'snare' });
+    });
+    if (pattern.extraSnareSteps && settings.density > 0.6) {
+      pattern.extraSnareSteps.forEach(step => {
+        if (Math.random() < settings.density) notes.push({ time: barStart + step * stepDur, lane: 'snare' });
+      });
+    }
+
+    // Fills at phrase boundaries — tom run leading into next phrase
+    if (isFillBar && Math.random() < pattern.fillDensity * settings.density) {
+      const fillSteps = settings.density > 0.8 ? [4,5,6,7] : [5,6,7];
+      fillSteps.forEach(step => {
+        notes.push({ time: barStart + step * stepDur, lane: tomCycle[tomIdx % tomCycle.length] });
+        tomIdx++;
+      });
+    }
+
+    // Crash accents at phrase starts (every 4 or 8 bars depending on genre)
+    const crashInterval = song.genre === 'punk' ? 8 : 4;
+    if (bar % crashInterval === 0) {
+      notes.push({ time: barStart, lane: 'crash' });
+    }
+  }
+
+  return finalizeChart(notes);
+}
+
+function generateChartFromAnalysis(song, diffKey) {
+  const settings = DIFF_SETTINGS[diffKey];
+  // Thin the analyzed notes by difficulty density (keep strongest-timed spacing, randomized drop)
+  const notes = song.analyzedNotes
+    .filter(n => Math.random() < (0.35 + settings.density * 0.65))
+    .map(n => ({ time: n.time, lane: n.lane }));
+  return finalizeChart(notes);
+}
+
+function finalizeChart(notes) {
+  notes.sort((a,b) => a.time - b.time);
+  const minGap = 0.08;
+  const filtered = [];
+  const lastTimeByLane = {};
+  notes.forEach(n => {
+    const last = lastTimeByLane[n.lane] ?? -999;
+    if (n.time - last >= minGap) {
+      filtered.push({ ...n, judged: false, hit: false, spawned: false });
+      lastTimeByLane[n.lane] = n.time;
+    }
+  });
+  return filtered;
 }
 
 // ============================================================
@@ -384,13 +730,15 @@ function scheduleSong(song, startTime) {
 let gameActive = false;
 let songStartAudioTime = 0;
 let songEndAudioTime = 0;
-let noteTravelTime = 1.6; // seconds for a note to travel from spawn to hit point
-let chart = []; // { time, lane, hit: bool, judged: bool }
+let songTotalDuration = 0;
+let noteTravelTime = 1.6;
+let chart = [];
 let score = 0, combo = 0, maxCombo = 0;
-let countPerfect = 0, countGood = 0, countMiss = 0;
-const activeNoteObjects = []; // { note, mesh }
+let countPerfect = 0, countGreat = 0, countGood = 0, countBad = 0, countMiss = 0;
+const activeNoteObjects = [];
+let currentAudioSourceNode = null;
 
-const NOTE_START_Z = -6.0; // spawn far in front
+const NOTE_START_Z = -6.0;
 function laneTargetPos(laneName) {
   const dm = laneMap[laneName];
   if (!dm) return new THREE.Vector3(0, 1, -0.5);
@@ -399,76 +747,42 @@ function laneTargetPos(laneName) {
   return p;
 }
 
-// Auto-generate a chart (note pattern) from the song's structure & difficulty
-function generateChart(song, diffKey) {
-  const settings = DIFF_SETTINGS[diffKey];
-  const beatDur = 60 / song.bpm;
-  const barDur = beatDur * 4;
-  const notes = [];
-  const lanesCycle = ['snare', 'tom1', 'tom2', 'tom3', 'floortom'];
-  let cycleIdx = 0;
-
-  for (let bar = 0; bar < song.bars; bar++) {
-    const barStart = bar * barDur;
-    // Kick on beat 1 & 3 always (anchor)
-    notes.push({ time: barStart, lane: 'kick' });
-    notes.push({ time: barStart + beatDur * 2, lane: 'kick' });
-
-    // Hihat/ride 8th notes depending on density
-    for (let e = 0; e < 8; e++) {
-      if (Math.random() < settings.density * 0.55) {
-        const lane = (bar % 8 === 7 && e >= 6) ? 'crash' : (bar % 4 === 3 ? 'ride' : 'hihat');
-        notes.push({ time: barStart + e * (beatDur / 2), lane });
-      }
-    }
-
-    // Snare backbeat on 2 & 4
-    notes.push({ time: barStart + beatDur, lane: 'snare' });
-    notes.push({ time: barStart + beatDur * 3, lane: 'snare' });
-
-    // Fill every 4 bars using toms, scaled by density
-    if (bar % 4 === 3 && Math.random() < settings.density) {
-      for (let f = 0; f < 4; f++) {
-        notes.push({ time: barStart + beatDur * 3 + f * (beatDur / 4), lane: lanesCycle[cycleIdx % lanesCycle.length] });
-        cycleIdx++;
-      }
-    }
-
-    // Crash on downbeat of first bar and every 8 bars
-    if (bar === 0 || bar % 8 === 0) {
-      notes.push({ time: barStart, lane: 'crash' });
-    }
-  }
-
-  notes.sort((a, b) => a.time - b.time);
-  // remove near-duplicate same-lane notes that are too close (avoid unplayable spam)
-  const minGap = 0.09;
-  const filtered = [];
-  const lastTimeByLane = {};
-  notes.forEach(n => {
-    const last = lastTimeByLane[n.lane] ?? -999;
-    if (n.time - last >= minGap) {
-      filtered.push({ ...n, judged: false, hit: false });
-      lastTimeByLane[n.lane] = n.time;
-    }
-  });
-  return filtered;
-}
-
-function startGame() {
+async function startGame() {
   ensureAudio();
-  initSongAudioGraph();
-  chart = generateChart(selectedSong, selectedDiff);
   score = 0; combo = 0; maxCombo = 0;
-  countPerfect = 0; countGood = 0; countMiss = 0;
+  countPerfect = 0; countGreat = 0; countGood = 0; countBad = 0; countMiss = 0;
   updateHud();
+  progressBarWrap.style.display = 'block';
+  progressBarFill.style.width = '0%';
 
   const settings = DIFF_SETTINGS[selectedDiff];
   noteTravelTime = 1.6 / settings.speedMul;
 
-  const now = audioCtx.currentTime + 1.0; // 1s countdown buffer
-  songStartAudioTime = now;
-  songEndAudioTime = scheduleSong(selectedSong, now);
+  if (selectedSong.builtin) {
+    chart = generateChartForBuiltinSong(selectedSong, selectedDiff);
+    initSongAudioGraph();
+    const now = audioCtx.currentTime + 1.0;
+    songStartAudioTime = now;
+    songEndAudioTime = scheduleBuiltinBackingTrack(selectedSong, now);
+    songTotalDuration = songEndAudioTime - songStartAudioTime;
+  } else {
+    chart = generateChartFromAnalysis(selectedSong, selectedDiff);
+    // Play the actual imported audio file
+    const resp = await fetch(selectedSong.audioUrl);
+    const arrayBuffer = await resp.arrayBuffer();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0.7;
+    source.connect(gainNode).connect(audioCtx.destination);
+    const now = audioCtx.currentTime + 1.0;
+    source.start(now);
+    currentAudioSourceNode = source;
+    songStartAudioTime = now;
+    songTotalDuration = audioBuffer.duration;
+    songEndAudioTime = now + songTotalDuration;
+  }
 
   gameActive = true;
 }
@@ -476,17 +790,52 @@ function startGame() {
 function updateHud() {
   scoreValEl.textContent = score;
   comboValEl.textContent = combo;
+  comboDisplayEl.classList.toggle('active', combo >= 10);
 }
 
-function showJudgement(text, color) {
-  judgeTextEl.textContent = text;
-  judgeTextEl.style.color = color;
-  clearTimeout(showJudgement._t);
-  showJudgement._t = setTimeout(() => { judgeTextEl.textContent = ''; }, 300);
+function showJudgeEffect(text, color) {
+  judgeEffectEl.textContent = text;
+  judgeEffectEl.style.color = color;
+  judgeEffectEl.style.animation = 'none';
+  void judgeEffectEl.offsetWidth; // reflow to restart animation
+  judgeEffectEl.style.animation = 'judgePop 0.5s ease-out';
+}
+
+const JUDGE_COLORS = {
+  PERFECT: '#48dbfb',
+  GREAT: '#7cfc00',
+  GOOD: '#feca57',
+  BAD: '#ff9944',
+  MISS: '#ff4444'
+};
+
+function applyJudgement(kind) {
+  // PERFECT/GREAT keep combo; GOOD and below break combo (per spec: "GOOD以下でコンボ途切れ")
+  if (kind === 'PERFECT') {
+    combo++; maxCombo = Math.max(maxCombo, combo);
+    score += 100 + Math.min(50, combo);
+    countPerfect++;
+  } else if (kind === 'GREAT') {
+    combo++; maxCombo = Math.max(maxCombo, combo);
+    score += 70 + Math.min(30, combo);
+    countGreat++;
+  } else if (kind === 'GOOD') {
+    combo = 0;
+    score += 30;
+    countGood++;
+  } else if (kind === 'BAD') {
+    combo = 0;
+    score += 10;
+    countBad++;
+  } else if (kind === 'MISS') {
+    combo = 0;
+    countMiss++;
+  }
+  showJudgeEffect(kind, JUDGE_COLORS[kind]);
+  updateHud();
 }
 
 function judgeNoteHit(lane) {
-  // find nearest unjudged note in this lane within timing window
   const nowSong = audioCtx.currentTime - songStartAudioTime;
   let best = null, bestDiff = Infinity;
   chart.forEach(n => {
@@ -496,25 +845,20 @@ function judgeNoteHit(lane) {
   });
   if (!best) return false;
 
-  const PERFECT_WINDOW = 0.09;
-  const GOOD_WINDOW = 0.20;
+  // Timing windows (seconds)
+  const WINDOWS = [
+    ['PERFECT', 0.05],
+    ['GREAT', 0.10],
+    ['GOOD', 0.16],
+    ['BAD', 0.24]
+  ];
 
-  if (bestDiff <= PERFECT_WINDOW) {
-    best.judged = true; best.hit = true;
-    combo++; maxCombo = Math.max(maxCombo, combo);
-    score += 100 + Math.min(50, combo);
-    countPerfect++;
-    showJudgement('PERFECT', '#48dbfb');
-    updateHud();
-    return true;
-  } else if (bestDiff <= GOOD_WINDOW) {
-    best.judged = true; best.hit = true;
-    combo++; maxCombo = Math.max(maxCombo, combo);
-    score += 50 + Math.min(20, combo);
-    countGood++;
-    showJudgement('GOOD', '#feca57');
-    updateHud();
-    return true;
+  for (const [kind, window] of WINDOWS) {
+    if (bestDiff <= window) {
+      best.judged = true; best.hit = true;
+      applyJudgement(kind);
+      return true;
+    }
   }
   return false;
 }
@@ -522,16 +866,19 @@ function judgeNoteHit(lane) {
 function tickMissDetection() {
   if (!gameActive) return;
   const nowSong = audioCtx.currentTime - songStartAudioTime;
-  const MISS_WINDOW = 0.20;
+  const MISS_WINDOW = 0.24;
   chart.forEach(n => {
     if (!n.judged && (nowSong - n.time) > MISS_WINDOW) {
       n.judged = true; n.hit = false;
-      combo = 0;
-      countMiss++;
-      showJudgement('MISS', '#ff6b6b');
-      updateHud();
+      applyJudgement('MISS');
     }
   });
+
+  // progress bar
+  if (songTotalDuration > 0) {
+    const progress = Math.min(1, Math.max(0, nowSong / songTotalDuration));
+    progressBarFill.style.width = (progress * 100).toFixed(1) + '%';
+  }
 
   if (audioCtx.currentTime > songEndAudioTime + 1.0 && gameActive) {
     endGame();
@@ -540,26 +887,28 @@ function tickMissDetection() {
 
 function endGame() {
   gameActive = false;
-  const total = countPerfect + countGood + countMiss;
-  const accuracy = total > 0 ? (((countPerfect + countGood * 0.5) / total) * 100).toFixed(1) : '0.0';
+  const total = countPerfect + countGreat + countGood + countBad + countMiss;
+  const weighted = countPerfect*1.0 + countGreat*0.8 + countGood*0.5 + countBad*0.2;
+  const accuracy = total > 0 ? ((weighted / total) * 100).toFixed(1) : '0.0';
   document.getElementById('resSong').textContent = selectedSong.title;
   document.getElementById('resScore').textContent = score;
   document.getElementById('resCombo').textContent = maxCombo;
   document.getElementById('resPerfect').textContent = countPerfect;
+  document.getElementById('resGreat').textContent = countGreat;
   document.getElementById('resGood').textContent = countGood;
+  document.getElementById('resBad').textContent = countBad;
   document.getElementById('resMiss').textContent = countMiss;
   document.getElementById('resAccuracy').textContent = accuracy;
   hud.style.display = 'none';
+  progressBarWrap.style.display = 'none';
   resultScreen.style.display = 'flex';
 
-  // clear remaining visual notes
   activeNoteObjects.forEach(o => scene.remove(o.mesh));
   activeNoteObjects.length = 0;
 }
 
 // ============================================================
-// Note visuals: spawn a small glowing disc that flies from far away
-// toward the corresponding drum pad.
+// Note visuals
 // ============================================================
 const noteGeoCache = {};
 function getNoteMesh(lane) {
@@ -570,13 +919,12 @@ function getNoteMesh(lane) {
     noteGeoCache[lane] = { geo, mat };
   }
   const cache = noteGeoCache[lane];
-  const mesh = new THREE.Mesh(cache.geo, cache.mat);
-  return mesh;
+  return new THREE.Mesh(cache.geo, cache.mat);
 }
 function laneColor(lane) {
   const colors = {
-    snare: 0xffffff, tom1: 0xff8888, tom2: 0xffaa55, tom3: 0xffdd55,
-    floortom: 0xcc8844, hihat: 0x88ffff, crash: 0xffee66, ride: 0xffcc44, kick: 0xff4444
+    snare: 0xffffff, tom1: 0xff8888, tom2: 0xffaa55,
+    floortom: 0xcc8844, hihat: 0x88ffff, crash: 0xffee66, ride: 0xffcc44
   };
   return colors[lane] || 0xffffff;
 }
@@ -595,18 +943,18 @@ function spawnDueNotes() {
       startPos.y += 0.3;
       mesh.position.copy(startPos);
       scene.add(mesh);
-      activeNoteObjects.push({ note: n, mesh, targetPos, spawnSongTime: nowSong });
+      activeNoteObjects.push({ note: n, mesh, targetPos });
     }
   });
 }
 
 function updateNoteVisuals() {
-  if (!gameActive) { return; }
+  if (!gameActive) return;
   const nowSong = audioCtx.currentTime - songStartAudioTime;
   for (let i = activeNoteObjects.length - 1; i >= 0; i--) {
     const obj = activeNoteObjects[i];
     const n = obj.note;
-    const progress = 1 - (n.time - nowSong) / noteTravelTime; // 0 at spawn, 1 at hit time
+    const progress = 1 - (n.time - nowSong) / noteTravelTime;
     if (progress >= 1.15 || n.judged) {
       scene.remove(obj.mesh);
       activeNoteObjects.splice(i, 1);
@@ -621,7 +969,7 @@ function updateNoteVisuals() {
 }
 
 // ============================================================
-// Scene / controllers setup (drum kit reused from base simulator)
+// Scene setup
 // ============================================================
 function init() {
   scene = new THREE.Scene();
@@ -671,7 +1019,6 @@ function init() {
   room.position.y = 3;
   scene.add(room);
 
-  // Long note-lane guide "runway" visual to hint incoming notes
   const runwayGeo = new THREE.PlaneGeometry(3.5, 6);
   const runwayMat = new THREE.MeshBasicMaterial({ color: 0x2a2a55, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
   const runway = new THREE.Mesh(runwayGeo, runwayMat);
@@ -729,13 +1076,12 @@ function buildDrumKit() {
     const group = new THREE.Group();
     group.position.set(def.pos[0], def.pos[1], def.pos[2]);
 
-    let bodyHeight = def.type === 'cymbal' || def.type === 'hihat' ? 0.02 : 0.26;
-    if (def.type === 'kick') bodyHeight = 0.4;
+    let bodyHeight = (def.type === 'cymbal' || def.type === 'hihat') ? 0.02 : 0.26;
     if (def.type === 'floortom') bodyHeight = 0.32;
 
     if (def.type !== 'cymbal' && def.type !== 'hihat') {
       const shellGeo = new THREE.CylinderGeometry(def.radius, def.radius, bodyHeight, 24);
-      const shellColor = def.type === 'kick' ? 0x111111 : (def.type === 'floortom' ? 0x5a3a1a : 0xcc3333);
+      const shellColor = def.type === 'floortom' ? 0x5a3a1a : 0xcc3333;
       const shellMat = new THREE.MeshStandardMaterial({ color: shellColor, roughness: 0.5, metalness: 0.1 });
       const shell = new THREE.Mesh(shellGeo, shellMat);
       shell.position.y = -bodyHeight / 2;
@@ -744,19 +1090,17 @@ function buildDrumKit() {
     }
 
     const headGeo = new THREE.CylinderGeometry(def.radius, def.radius, 0.02, 32);
-    const headMat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.7, metalness: def.type === 'cymbal' || def.type === 'hihat' ? 0.8 : 0.0 });
+    const headMat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.7, metalness: (def.type === 'cymbal' || def.type === 'hihat') ? 0.8 : 0.0 });
     const head = new THREE.Mesh(headGeo, headMat);
     head.castShadow = true; head.receiveShadow = true;
     group.add(head);
 
-    if (def.type !== 'kick') {
-      const poleHeight = def.pos[1];
-      const poleGeo = new THREE.CylinderGeometry(0.015, 0.015, poleHeight, 8);
-      const pole = new THREE.Mesh(poleGeo, standMat);
-      pole.position.set(def.pos[0], -def.pos[1] / 2 - (def.type === 'cymbal' || def.type === 'hihat' ? 0.01 : bodyHeight), def.pos[2]);
-      pole.castShadow = true;
-      scene.add(pole);
-    }
+    const poleHeight = def.pos[1];
+    const poleGeo = new THREE.CylinderGeometry(0.015, 0.015, poleHeight, 8);
+    const pole = new THREE.Mesh(poleGeo, standMat);
+    pole.position.set(def.pos[0], -def.pos[1] / 2 - ((def.type === 'cymbal' || def.type === 'hihat') ? 0.01 : bodyHeight), def.pos[2]);
+    pole.castShadow = true;
+    scene.add(pole);
 
     scene.add(group);
 
@@ -777,7 +1121,7 @@ function buildDrumKit() {
 }
 
 // ============================================================
-// Hit detection (extends base version: also triggers rhythm judging)
+// Hit detection
 // ============================================================
 const tmpTipWorld = new THREE.Vector3();
 
@@ -797,7 +1141,7 @@ function checkHits(controller, dt) {
     dm.head.getWorldPosition(headWorldPos);
     const dx = tmpTipWorld.x - headWorldPos.x;
     const dz = tmpTipWorld.z - headWorldPos.z;
-    const distXZ = Math.sqrt(dx * dx + dz * dz);
+    const distXZ = Math.sqrt(dx*dx + dz*dz);
     const yDiff = tmpTipWorld.y - headWorldPos.y;
 
     const withinRadius = distXZ < dm.def.radius * 1.1;
@@ -815,9 +1159,7 @@ function checkHits(controller, dt) {
       dm.hitAnim = 1.0;
       triggerHaptic(controller, Math.min(1.0, 0.4 + velocityFactor * 0.6), 60);
 
-      if (gameActive) {
-        judgeNoteHit(dm.def.lane);
-      }
+      if (gameActive) judgeNoteHit(dm.def.lane);
     }
   });
 
@@ -906,8 +1248,10 @@ enterBtn.addEventListener('click', async () => {
 
     session.addEventListener('end', () => {
       gameActive = false;
+      if (currentAudioSourceNode) { try { currentAudioSourceNode.stop(); } catch(e){} }
       overlay.style.display = 'flex';
       hud.style.display = 'none';
+      progressBarWrap.style.display = 'none';
       resultScreen.style.display = 'none';
     });
 
@@ -918,7 +1262,6 @@ enterBtn.addEventListener('click', async () => {
       });
     });
 
-    // Small delay so the player can get oriented before the song starts
     setTimeout(() => { startGame(); }, 800);
   } catch (err) {
     statusEl.textContent = 'VRセッション開始に失敗しました: ' + err.message;
